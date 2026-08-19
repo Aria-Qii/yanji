@@ -155,6 +155,11 @@
     .budget-fill.warn { background: #fde68a; }
     .budget-fill.over { background: #fca5a5; }
 
+    /* ===== 快速记账 ===== */
+    .quick-bar { margin: 12px 14px 0; }
+    .quick-bar input { width: 100%; border: 1.5px solid var(--accent); border-radius: 13px; padding: 12px 14px; font-size: 15px; background: #fff; outline: none; }
+    .quick-bar input:focus { box-shadow: 0 0 0 3px rgba(16,185,129,.15); }
+
     /* ===== 搜索栏 ===== */
     .search-bar { margin: 12px 14px 0; position: relative; }
     .search-bar input { width: 100%; border: none; border-radius: 13px; padding: 12px 40px 12px 14px; font-size: 15px; background: var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.04); outline: none; }
@@ -244,6 +249,10 @@
       <div class="budget-track"><div class="budget-fill" id="budgetFill"></div></div>
     </div>
   </header>
+
+  <div class="quick-bar">
+    <input id="quickInput" placeholder="💬 一句话记账：午餐 35 微信" />
+  </div>
 
   <div class="search-bar" id="searchBar">
     <input id="searchInput" placeholder="搜索账单（分类 / 备注 / 账户 / 金额）" />
@@ -1130,6 +1139,104 @@
     a.remove();
   };
 
+  // ===== 自然语言记账 =====
+  function parseNL(raw){
+    const s = raw.trim();
+    if(!s) return null;
+    const amtMatch = s.match(/(?:¥|￥)?(\d+(?:\.\d{1,2})?)\s*(?:元|块|块钱)?/);
+    if(!amtMatch || !amtMatch[1]) return null;
+    const amount = parseFloat(amtMatch[1]);
+    if(!amount || amount <= 0) return null;
+
+    const transferWords = ['转账','转给','转入','转出','还款','还贷','还车贷','还信用卡','还花呗','还白条','充值','提现'];
+    const mentionedWallets = wallets.filter(w => s.includes(w.name));
+    let fromWallet = null, toWallet = null;
+    if(transferWords.some(w => s.includes(w)) && mentionedWallets.length >= 2){
+      let target = null;
+      for(const w of mentionedWallets){ if(s.includes('还'+w.name)){ target = w; break; } }
+      if(!target) target = mentionedWallets[mentionedWallets.length-1];
+      toWallet = target.id;
+      const src = mentionedWallets.find(w => w !== target);
+      fromWallet = src ? src.id : null;
+    }
+    const nameStripped = wallets.reduce((a,w) => a.split(w.name).join(''), s);
+    const incomeWords = ['发工资','工资','薪','收入','奖金','收款','进账','报销','利息','退款','到账','收到','转入','入账','赚','分红','收益'];
+    const type = fromWallet ? 'transfer' : (incomeWords.some(w => nameStripped.includes(w)) ? 'income' : 'expense');
+
+    let wallet = null;
+    if(!fromWallet){
+      for(const w of wallets){ if(s.includes(w.name)){ wallet = w.id; break; } }
+      if(!wallet){
+        const lower = s.toLowerCase();
+        const alias = [['wx','微信'],['wechat','微信'],['vx','微信'],['zfb','支付宝'],['alipay','支付宝']];
+        for(const [k,v] of alias){ if(lower.includes(k)){ const w = wallets.find(x=>x.name===v); if(w){ wallet=w.id; break; } } }
+      }
+    }
+
+    let category = null;
+    if(type === 'income'){
+      if(s.includes('奖金')) category='奖金';
+      else if(s.includes('红包')) category='红包';
+      else if(s.includes('理财')||s.includes('利息')||s.includes('收益')) category='理财';
+      else if(s.includes('报销')) category='报销';
+      else if(s.includes('兼职')||s.includes('外快')) category='兼职';
+      else category='工资';
+    } else if(type === 'expense'){
+      const catMap = [
+        ['餐饮',['餐','饭','吃','午饭','晚饭','早餐','夜宵','外卖','咖啡','奶茶','喝','美团','饿了么','火锅','烧烤','零食','水果']],
+        ['交通',['打车','滴滴','地铁','公交','加油','停车','高铁','火车','机票','出租','出行','过路费']],
+        ['居住',['房租','水电','物业','燃气']],
+        ['医疗',['药','医院','看病','体检','挂号']],
+        ['通讯',['话费','流量','宽带','充值','手机费']],
+        ['宠物',['猫','狗','宠物','猫粮','狗粮','罐头']],
+        ['娱乐',['电影','游戏','ktv','唱','玩','门票','娱乐']],
+        ['人情',['红包','礼金','份子','请客','随礼']],
+        ['旅行',['旅行','旅游','酒店','住宿']],
+        ['教育',['书','课程','学费','培训','考试']],
+        ['日用',['日用','纸巾','牙膏','洗发','洗衣','生活用品']],
+        ['购物',['买','购物','淘宝','京东','拼多多','超市','衣服','鞋','包','化妆品']]
+      ];
+      for(const [cat, words] of catMap){ if(words.some(w=>s.includes(w))){ category=cat; break; } }
+      if(!category) category='其他';
+    }
+
+    let note = s;
+    if(amtMatch[0]) note = note.replace(amtMatch[0], '');
+    const strip = [];
+    wallets.forEach(w => { if(note.includes(w.name)) strip.push(w.name); });
+    incomeWords.forEach(w => { if(note.includes(w)) strip.push(w); });
+    transferWords.forEach(w => { if(note.includes(w)) strip.push(w); });
+    if(category) strip.push(category);
+    ['今天','昨天','花了','付了','支出','消费','记','一笔'].forEach(w => { if(note.includes(w)) strip.push(w); });
+    strip.sort((a,b)=> b.length - a.length);
+    strip.forEach(w => { note = note.split(w).join(''); });
+    note = note.replace(/[\s,，。、!！?？:：;；"'“”‘’()（）[\]【】]+/g, ' ').trim();
+
+    return { type, amount, category, wallet, from: fromWallet, to: toWallet, note };
+  }
+
+  window.submitQuick = function(){
+    const txt = document.getElementById('quickInput').value;
+    const p = parseNL(txt);
+    if(!p){ alert('没看懂～试试：「午餐 35 微信」或「发工资 11000 工资卡」'); return; }
+    editingId = null;
+    currentType = p.type;
+    currentCat = p.category;
+    currentWallet = p.wallet || (wallets[0] ? wallets[0].id : null);
+    currentFromWallet = p.from || (wallets[0] ? wallets[0].id : null);
+    currentToWallet = p.to || (wallets[1] ? wallets[1].id : (wallets[0] ? wallets[0].id : null));
+    document.getElementById('amtInput').value = p.amount;
+    document.getElementById('noteInput').value = p.note || '';
+    document.getElementById('dateInput').value = todayStr();
+    document.getElementById('btnDelete').style.display = 'none';
+    updateTypeUI();
+    renderCatGrid();
+    renderWalletChips();
+    renderTransferChips();
+    showSheet('sheetTxn');
+    document.getElementById('quickInput').value = '';
+  };
+
   // 初始化
   load();
   currentMonth = nowMonth();
@@ -1138,6 +1245,9 @@
     searchQuery = this.value.trim();
     document.getElementById('searchClear').style.display = searchQuery ? 'inline-block' : 'none';
     render();
+  });
+  document.getElementById('quickInput').addEventListener('keydown', function(e){
+    if(e.key === 'Enter') submitQuick();
   });
 
   if('serviceWorker' in navigator){
