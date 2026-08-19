@@ -182,6 +182,18 @@
     .cm-tb.on { background: #fff; color: var(--accent-deep); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
     .cm-add input { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 14px; outline: none; background: var(--bg); margin-bottom: 8px; }
 
+    /* ===== 分类统计 ===== */
+    .catstat-controls { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; flex-wrap: wrap; }
+    .catstat-type, .catstat-period { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; }
+    .catstat-type button, .catstat-period button { border: none; background: none; padding: 6px 11px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+    .catstat-type button.on, .catstat-period button.on { background: #fff; color: var(--accent-deep); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .donut-wrap { display: flex; justify-content: center; margin: 4px 0 14px; }
+    .cat-rank-item { margin-bottom: 10px; }
+    .cat-rank-item:last-child { margin-bottom: 0; }
+    .cat-rank-top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }
+    .cat-rank-top .cname { display: flex; align-items: center; gap: 6px; }
+    .cdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+
     /* ===== 悬浮按钮 & 底部导航 ===== */
     .fab { position: fixed; right: 20px; bottom: calc(86px + var(--safe-bottom)); width: 58px; height: 58px; border-radius: 50%; background: var(--accent); color: #fff; border: none; font-size: 30px; line-height: 1; box-shadow: 0 6px 20px rgba(16,185,129,.42); cursor: pointer; z-index: 30; display: flex; align-items: center; justify-content: center; transition: transform .12s, background .12s; }
     .fab:active { transform: scale(.92); background: var(--accent-deep); }
@@ -312,6 +324,23 @@
       <canvas id="trendChart"></canvas>
     </div>
     <div class="chart-card">
+      <div class="chart-head"><h3>🏷️ 分类统计</h3></div>
+      <div class="catstat-controls">
+        <div class="catstat-type">
+          <button class="cst on" data-t="expense">支出</button>
+          <button class="cst" data-t="income">收入</button>
+        </div>
+        <div class="catstat-period">
+          <button class="csp on" data-p="month">本月</button>
+          <button class="csp" data-p="3m">近3月</button>
+          <button class="csp" data-p="12m">近12月</button>
+          <button class="csp" data-p="all">全部</button>
+        </div>
+      </div>
+      <div class="donut-wrap"><canvas id="catDonut"></canvas></div>
+      <div id="catStatList"></div>
+    </div>
+    <div class="chart-card">
       <div class="chart-head"><h3>📅 每月明细</h3></div>
       <div id="monthTable"></div>
     </div>
@@ -424,6 +453,7 @@
   const KEY_INC_CATS = 'yanji_cats_income_v1';
   const CAT_EMOJIS = ['🍜','🍔','🍰','☕','🍺','🛒','🛍️','👗','👟','💄','🚗','⛽','🚇','✈️','🏠','💡','💧','📱','💻','🎮','🎬','🏋️','⚽','💊','🏥','📚','🎓','🐱','🐶','💰','💳','🧧','🎁','🎉','💍','👶','🍼','🏦','📈','🧾','🔧','🧹','🌹','🎵','🎨','🧋','🍎','📦','✨','🌟','🔥','❤️'];
   const BG_PALETTE = ['#fff1e6','#e6f0ff','#ffe9f0','#eef7ee','#f0e6ff','#e6fbff','#fffbe6','#f3ecff','#eef2f6','#ffe9e6'];
+  const DONUT_PALETTE = ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#14b8a6','#6366f1','#e11d48','#22c55e','#a855f7','#facc15','#0891b2'];
   let expenseCats = [];
   let incomeCats = [];
   const WALLET_EMOJIS = ['💬','🔷','💳','🚗','🏦','💰','🐷','📱','🧾','💵','🪙','🏧','✈️','🎁','✨'];
@@ -460,6 +490,8 @@
   let showBreakdown = true;
   let newCatType = 'expense';
   let pickedCatEmoji = '🍜';
+  let catStatType = 'expense';
+  let catStatPeriod = 'month';
   // 账户编辑状态
   let editingWalletId = null;
   let pickedEmoji = '💬';
@@ -1002,6 +1034,7 @@
     tb.className = 'val ' + (totalBal>=0?'pos':'neg');
     drawChart(stats);
     renderMonthTable(stats);
+    renderCatStats();
   }
 
   function topRounded(ctx, x, y, w, h, r){
@@ -1331,6 +1364,80 @@
     if(currentTab === 'list') renderList(monthTxns(currentMonth));
   };
 
+  // ===== 分类统计 =====
+  function periodTxns(period){
+    if(period === 'all') return txns;
+    const months = period === '3m' ? 3 : (period === '12m' ? 12 : 1);
+    const now = new Date();
+    const cutoff = monthKey(new Date(now.getFullYear(), now.getMonth() - (months - 1), 1));
+    return txns.filter(t => t.date.slice(0,7) >= cutoff);
+  }
+
+  function renderCatStats(){
+    const list = periodTxns(catStatPeriod).filter(t => t.type === catStatType);
+    const byCat = {};
+    list.forEach(t => { byCat[t.category] = (byCat[t.category] || 0) + t.amount; });
+    const total = Object.values(byCat).reduce((a,b)=>a+b,0);
+    const arr = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+    drawDonut(arr, total);
+    renderCatList(arr, total);
+  }
+
+  function drawDonut(arr, total){
+    const canvas = document.getElementById('catDonut');
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const size = 172;
+    canvas.style.width = size+'px';
+    canvas.style.height = size+'px';
+    canvas.width = Math.round(size*dpr);
+    canvas.height = Math.round(size*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    const cx = size/2, cy = size/2, r = size/2 - 14, inner = r*0.58;
+    ctx.clearRect(0,0,size,size);
+    if(total <= 0 || arr.length === 0){
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.strokeStyle='#eceef1'; ctx.lineWidth=20; ctx.stroke();
+      ctx.fillStyle='#8a8f98'; ctx.font='13px -apple-system, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('暂无数据', cx, cy);
+      return;
+    }
+    let start = -Math.PI/2;
+    const gap = 0.02;
+    arr.forEach(([,v], i) => {
+      const angle = (v/total) * Math.PI*2;
+      const color = DONUT_PALETTE[i % DONUT_PALETTE.length];
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, start + gap, start + angle - gap);
+      ctx.arc(cx, cy, inner, start + angle - gap, start + gap, true);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      start += angle;
+    });
+    ctx.fillStyle='#1a1d21'; ctx.font='bold 17px -apple-system, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(fmtCompact(total), cx, cy - 8);
+    ctx.fillStyle='#8a8f98'; ctx.font='11px -apple-system, sans-serif';
+    ctx.fillText(catStatType === 'expense' ? '总支出' : '总收入', cx, cy + 12);
+  }
+
+  function renderCatList(arr, total){
+    const el = document.getElementById('catStatList');
+    if(arr.length === 0){
+      el.innerHTML = '<div class="breakdown-empty">该时间段暂无数据</div>';
+      return;
+    }
+    let html = '';
+    arr.forEach(([cat, v], i) => {
+      const [name, emoji] = catOf(catStatType, cat);
+      const pct = total>0 ? (v/total*100) : 0;
+      const color = DONUT_PALETTE[i % DONUT_PALETTE.length];
+      html += '<div class="cat-rank-item">'
+        + '<div class="cat-rank-top"><span class="cname"><i class="cdot" style="background:'+color+'"></i>'+emoji+' '+escapeHtml(name)+'</span><span class="cval">'+fmtPlain(v)+' · '+pct.toFixed(1)+'%</span></div>'
+        + '<div class="bar-track"><div class="bar-fill" style="width:'+Math.max(pct,1.5)+'%;background:'+color+'"></div></div>'
+        + '</div>';
+    });
+    el.innerHTML = html;
+  }
+
   // 初始化
   load();
   currentMonth = nowMonth();
@@ -1347,6 +1454,16 @@
     newCatType = b.dataset.t;
     document.querySelectorAll('.cm-tb').forEach(x => x.classList.remove('on'));
     b.classList.add('on');
+  }));
+  document.querySelectorAll('.catstat-type .cst').forEach(b => b.addEventListener('click', () => {
+    catStatType = b.dataset.t;
+    document.querySelectorAll('.catstat-type .cst').forEach(x => x.classList.toggle('on', x === b));
+    renderCatStats();
+  }));
+  document.querySelectorAll('.catstat-period .csp').forEach(b => b.addEventListener('click', () => {
+    catStatPeriod = b.dataset.p;
+    document.querySelectorAll('.catstat-period .csp').forEach(x => x.classList.toggle('on', x === b));
+    renderCatStats();
   }));
 
   if('serviceWorker' in navigator){
