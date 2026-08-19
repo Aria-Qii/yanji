@@ -379,9 +379,13 @@
     </div>
     <div class="chart-card">
       <div class="chart-head"><h3>📥 导入账单</h3></div>
-      <div class="hint-line">支持叨叨记账：在 Excel/WPS 打开后，选中「表头 + 数据」复制，粘贴到下面（列之间是制表符）。</div>
+      <div class="hint-line">支持叨叨记账：粘贴数据，或「选择文件」导入 .tsv/.txt/.csv。</div>
       <textarea class="import-textarea" id="importText" placeholder="粘贴数据（第一行是表头）…"></textarea>
-      <button class="btn primary" style="margin-top:10px;" onclick="previewImport()">解析预览</button>
+      <input type="file" id="importFile" accept=".tsv,.txt,.csv" style="display:none;" onchange="handleImportFile(this)" />
+      <div class="sheet-actions" style="margin-top:10px;">
+        <button class="btn ghost" onclick="document.getElementById('importFile').click()">📁 选择文件</button>
+        <button class="btn primary" onclick="previewImport()">解析预览</button>
+      </div>
       <div id="importPreview" style="display:none;">
         <div class="hint-line" id="importSummary"></div>
         <div class="import-sample" id="importSample"></div>
@@ -477,7 +481,7 @@
   const CAT_EMOJIS = ['🍜','🍔','🍰','☕','🍺','🛒','🛍️','👗','👟','💄','🚗','⛽','🚇','✈️','🏠','💡','💧','📱','💻','🎮','🎬','🏋️','⚽','💊','🏥','📚','🎓','🐱','🐶','💰','💳','🧧','🎁','🎉','💍','👶','🍼','🏦','📈','🧾','🔧','🧹','🌹','🎵','🎨','🧋','🍎','📦','✨','🌟','🔥','❤️'];
   const BG_PALETTE = ['#fff1e6','#e6f0ff','#ffe9f0','#eef7ee','#f0e6ff','#e6fbff','#fffbe6','#f3ecff','#eef2f6','#ffe9e6'];
   const DONUT_PALETTE = ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#14b8a6','#6366f1','#e11d48','#22c55e','#a855f7','#facc15','#0891b2'];
-  const IMPORT_CAT_MAP = { '食':'餐饮','餐饮':'餐饮','饭':'餐饮','购':'购物','购物':'购物','买':'购物','行':'交通','交通':'交通','出行':'交通','住':'居住','居住':'居住','娱':'娱乐','娱乐':'娱乐','医':'医疗','医疗':'医疗','学':'教育','教育':'教育','衣':'服饰','服饰':'服饰','人情':'人情','礼':'人情','旅':'旅行','旅行':'旅行','通讯':'通讯','通':'通讯','日用':'日用','宠物':'宠物','宠':'宠物','薪':'工资','工资':'工资','奖金':'奖金','红包':'红包','理财':'理财','报销':'报销','兼职':'兼职' };
+  const IMPORT_CAT_MAP = { '食':'餐饮','餐饮':'餐饮','饭':'餐饮','购':'购物','购物':'购物','买':'购物','行':'交通','交通':'交通','出行':'交通','住':'居住','居住':'居住','娱':'娱乐','乐':'娱乐','娱乐':'娱乐','医':'医疗','医疗':'医疗','学':'教育','育':'教育','教育':'教育','衣':'服饰','服饰':'服饰','人情':'人情','情':'人情','礼':'人情','旅':'旅行','旅行':'旅行','通讯':'通讯','通':'通讯','日用':'日用','宠物':'宠物','宠':'宠物','薪':'工资','工资':'工资','奖金':'奖金','红包':'红包','理财':'理财','投':'理财','报销':'报销','兼职':'兼职','其':'其他','其他':'其他' };
   let expenseCats = [];
   let incomeCats = [];
   const WALLET_EMOJIS = ['💬','🔷','💳','🚗','🏦','💰','🐷','📱','🧾','💵','🪙','🏧','✈️','🎁','✨'];
@@ -1476,6 +1480,7 @@
     const byName = nm => { const w = wallets.find(x => x.name === nm); return w ? w.id : null; };
     if(/信用卡/.test(n)) return byName('信用卡');
     if(/车贷/.test(n)) return byName('车贷');
+    if(/花呗|白条/.test(n)) return byName('花呗') || byName('信用卡');
     if(/支付宝/.test(n)) return byName('支付宝');
     if(/微信/.test(n)) return byName('微信');
     if(/工资|储蓄|借记|招行|建行|工行|农行|中行|邮储|银行/.test(n)) return byName('工资卡');
@@ -1561,6 +1566,17 @@
   window.cancelImport = function(){
     pendingImport = null;
     document.getElementById('importPreview').style.display = 'none';
+  };
+
+  window.handleImportFile = function(input){
+    const f = input.files && input.files[0];
+    if(!f) return;
+    const reader = new FileReader();
+    reader.onload = function(){
+      document.getElementById('importText').value = reader.result;
+      previewImport();
+    };
+    reader.readAsText(f, 'UTF-8');
   };
 
   // 初始化
