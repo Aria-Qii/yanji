@@ -754,7 +754,7 @@
     if(d === todayStr()) return '今天';
     const dt = new Date(y, m-1, dd);
     const days = ['日','一','二','三','四','五','六'][dt.getDay()];
-    return m+'月'+dd+'日 · 周'+days;
+    return y+'年'+m+'月'+dd+'日 · 周'+days;
   }
 
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
