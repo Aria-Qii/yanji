@@ -61,9 +61,9 @@
     .summary-row { display: flex; gap: 10px; }
     .sum-card { flex: 1; background: rgba(255,255,255,.14); border-radius: 14px; padding: 12px 14px; backdrop-filter: blur(4px); }
     .sum-card .lab { font-size: 12px; opacity: .9; margin-bottom: 4px; }
-    .sum-card .val { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .sum-card .val { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
     .sum-card.balance { background: rgba(255,255,255,.24); }
-    .sum-card.balance .val { font-size: 21px; }
+    .sum-card.balance .val { font-size: 17px; }
 
     /* ===== 分类统计 ===== */
     .breakdown { background: var(--card); margin: 14px 14px 0; border-radius: var(--radius); padding: 14px 16px; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
@@ -105,7 +105,7 @@
     .wallet-view { margin: 14px 14px 0; }
     .networth { background: linear-gradient(160deg, #0ea5e9 0%, #2563eb 100%); color: #fff; border-radius: var(--radius); padding: 20px 18px; box-shadow: 0 4px 18px rgba(37,99,235,.22); }
     .networth .lab { font-size: 13px; opacity: .9; margin-bottom: 6px; }
-    .networth .val { font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .networth .val { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
     .networth .hint { font-size: 11px; opacity: .8; margin-top: 6px; }
     .wallet-section { margin-top: 16px; }
     .wallet-section .sec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 0 4px; }
@@ -605,6 +605,12 @@
   function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 
   function fmtMoney(n){ return (n<0?'-':'') + '¥' + Math.abs(n).toLocaleString('zh-CN',{minimumFractionDigits:2, maximumFractionDigits:2}); }
+  function fmtMoneyS(n){
+    const a = Math.abs(n), sign = n < 0 ? '-' : '';
+    if(a >= 100000000) return sign + '¥' + (a/100000000).toFixed(1) + '亿';
+    if(a >= 10000) return sign + '¥' + (a/10000).toFixed(1) + '万';
+    return sign + '¥' + Math.round(a).toLocaleString('zh-CN');
+  }
   function fmtPlain(n){ return n.toLocaleString('zh-CN',{minimumFractionDigits:2, maximumFractionDigits:2}); }
 
   function monthTxns(m){ return txns.filter(t => t.date.startsWith(m)); }
@@ -615,10 +621,10 @@
     mt.forEach(t => { if(t.type==='expense') exp+=t.amount; else inc+=t.amount; });
     const bal = inc - exp;
     document.getElementById('monthLabel').textContent = monthLabelText(currentMonth);
-    document.getElementById('sumExpense').textContent = fmtMoney(exp);
-    document.getElementById('sumIncome').textContent = fmtMoney(inc);
+    document.getElementById('sumExpense').textContent = fmtMoneyS(exp);
+    document.getElementById('sumIncome').textContent = fmtMoneyS(inc);
     const balEl = document.getElementById('sumBalance');
-    balEl.textContent = fmtMoney(bal);
+    balEl.textContent = fmtMoneyS(bal);
     balEl.style.color = bal >= 0 ? 'rgba(255,255,255,.95)' : '#ffe0d4';
     renderBudget(exp);
     if(searchQuery){
@@ -732,7 +738,7 @@
     const el = document.getElementById('walletList');
     const nw = totalNetWorth();
     const nwEl = document.getElementById('netWorth');
-    nwEl.textContent = (nw>=0?'':'−') + '¥' + Math.abs(nw).toLocaleString('zh-CN',{minimumFractionDigits:2, maximumFractionDigits:2});
+    nwEl.textContent = fmtMoneyS(nw);
     nwEl.style.color = '#fff';
     if(wallets.length === 0){
       el.innerHTML = '<div class="empty"><div class="big">💼</div><p>还没有账户<br/>点右上角「添加账户」建一个</p></div>';
@@ -742,9 +748,7 @@
     wallets.forEach(w => {
       const b = walletBalance(w);
       const cls = b >= 0 ? 'pos' : 'neg';
-      const initTxt = (w.initial && w.initial !== 0) ? ('初始 ' + (w.initial>=0?'':'-') + '¥' + fmtPlain(Math.abs(w.initial))) : '';
-      const inOut = walletFlowText(w);
-      const sub = [initTxt, inOut].filter(Boolean).join(' · ');
+      const sub = walletFlowText(w);
       html += '<div class="wallet-item" data-wid="'+w.id+'">'
         + '<div class="ico">'+w.emoji+'</div>'
         + '<div class="wmid"><div class="wname">'+escapeHtml(w.name)+'</div><div class="wsub">'+escapeHtml(sub)+'</div></div>'
