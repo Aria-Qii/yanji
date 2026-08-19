@@ -171,6 +171,16 @@
     .settings-view { margin: 14px 14px 0; }
     .settings-view .btn { width: 100%; display: block; }
     .hint-line { font-size: 12px; color: var(--text-2); margin-top: 10px; line-height: 1.6; }
+    .cm-group { margin-bottom: 12px; }
+    .cm-title { font-size: 12px; color: var(--text-2); margin-bottom: 7px; }
+    .cm-list { display: flex; flex-wrap: wrap; gap: 7px; }
+    .cm-chip { display: inline-flex; align-items: center; gap: 5px; background: var(--bg); padding: 6px 11px; border-radius: 20px; font-size: 13px; }
+    .cm-chip .del { cursor: pointer; color: var(--text-2); font-weight: 700; }
+    .cm-add { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 2px; }
+    .cm-type { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; margin-bottom: 8px; }
+    .cm-tb { flex: 1; padding: 7px 0; border: none; background: none; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+    .cm-tb.on { background: #fff; color: var(--accent-deep); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .cm-add input { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 14px; outline: none; background: var(--bg); margin-bottom: 8px; }
 
     /* ===== 悬浮按钮 & 底部导航 ===== */
     .fab { position: fixed; right: 20px; bottom: calc(86px + var(--safe-bottom)); width: 58px; height: 58px; border-radius: 50%; background: var(--accent); color: #fff; border: none; font-size: 30px; line-height: 1; box-shadow: 0 6px 20px rgba(16,185,129,.42); cursor: pointer; z-index: 30; display: flex; align-items: center; justify-content: center; transition: transform .12s, background .12s; }
@@ -316,6 +326,20 @@
       <div class="hint-line" id="budgetHint"></div>
     </div>
     <div class="chart-card">
+      <div class="chart-head"><h3>🏷️ 分类管理</h3></div>
+      <div class="cm-group"><div class="cm-title">支出分类</div><div class="cm-list" id="expCatList"></div></div>
+      <div class="cm-group"><div class="cm-title">收入分类</div><div class="cm-list" id="incCatList"></div></div>
+      <div class="cm-add">
+        <div class="cm-type" id="cmType">
+          <button class="cm-tb on" data-t="expense">支出</button>
+          <button class="cm-tb" data-t="income">收入</button>
+        </div>
+        <input id="newCatName" placeholder="分类名称，如：健身" />
+        <div class="emoji-pick" id="catEmojiPick"></div>
+        <button class="btn primary" style="margin-top:10px;" onclick="addCategory()">＋ 添加分类</button>
+      </div>
+    </div>
+    <div class="chart-card">
       <div class="chart-head"><h3>📤 数据导出</h3></div>
       <button class="btn primary" onclick="exportCSV()">导出账单 CSV</button>
       <div class="hint-line">CSV 可用 Excel / WPS 打开，含全部账单（支出为负数、收入为正数、转账无符号）</div>
@@ -387,15 +411,21 @@
   const KEY_LAST = 'yanji_lastwallet_v1';
   const KEY_BUDGET = 'yanji_budget_v1';
 
-  const EXPENSE_CATS = [
+  const DEFAULT_EXPENSE_CATS = [
     ['餐饮','🍜'],['交通','🚗'],['购物','🛍️'],['居住','🏠'],['娱乐','🎮'],
     ['医疗','💊'],['通讯','📱'],['教育','📚'],['宠物','🐱'],['日用','🧻'],
     ['服饰','👗'],['人情','🧧'],['旅行','✈️'],['其他','📦']
   ];
-  const INCOME_CATS = [
+  const DEFAULT_INCOME_CATS = [
     ['工资','💰'],['奖金','🎁'],['理财','📈'],['兼职','💼'],['报销','🧾'],
     ['红包','🧧'],['其他','✨']
   ];
+  const KEY_EXP_CATS = 'yanji_cats_expense_v1';
+  const KEY_INC_CATS = 'yanji_cats_income_v1';
+  const CAT_EMOJIS = ['🍜','🍔','🍰','☕','🍺','🛒','🛍️','👗','👟','💄','🚗','⛽','🚇','✈️','🏠','💡','💧','📱','💻','🎮','🎬','🏋️','⚽','💊','🏥','📚','🎓','🐱','🐶','💰','💳','🧧','🎁','🎉','💍','👶','🍼','🏦','📈','🧾','🔧','🧹','🌹','🎵','🎨','🧋','🍎','📦','✨','🌟','🔥','❤️'];
+  const BG_PALETTE = ['#fff1e6','#e6f0ff','#ffe9f0','#eef7ee','#f0e6ff','#e6fbff','#fffbe6','#f3ecff','#eef2f6','#ffe9e6'];
+  let expenseCats = [];
+  let incomeCats = [];
   const WALLET_EMOJIS = ['💬','🔷','💳','🚗','🏦','💰','🐷','📱','🧾','💵','🪙','🏧','✈️','🎁','✨'];
   const CAT_BG = {
     '🍜':'#fff1e6','🚗':'#e6f0ff','🛍️':'#ffe9f0','🏠':'#eef7ee','🎮':'#f0e6ff',
@@ -403,6 +433,11 @@
     '👗':'#ffe9f5','🧧':'#ffebe6','✈️':'#e6f4ff','📦':'#eef0f2','💰':'#e9f7ee',
     '🎁':'#fff0e0','📈':'#e6f7f0','💼':'#e6f0ff','🧾':'#eef7ff','✨':'#fffbe6'
   };
+  function catBg(emoji){
+    if(CAT_BG[emoji]) return CAT_BG[emoji];
+    let h = 0; for(const c of emoji) h = (h*31 + c.charCodeAt(0)) >>> 0;
+    return BG_PALETTE[h % BG_PALETTE.length];
+  }
   const DEFAULT_WALLETS = [
     {id:'w_wechat', name:'微信', emoji:'💬', initial:0},
     {id:'w_alipay', name:'支付宝', emoji:'🔷', initial:0},
@@ -423,6 +458,8 @@
   let currentFromWallet = null;
   let currentToWallet = null;
   let showBreakdown = true;
+  let newCatType = 'expense';
+  let pickedCatEmoji = '🍜';
   // 账户编辑状态
   let editingWalletId = null;
   let pickedEmoji = '💬';
@@ -432,6 +469,18 @@
     txns.forEach(t => { if(!t.wallet) t.wallet = null; });
     try { wallets = JSON.parse(localStorage.getItem(KEY_W) || 'null'); } catch(e){ wallets = null; }
     if(!wallets){ wallets = JSON.parse(JSON.stringify(DEFAULT_WALLETS)); saveWallets(); }
+    loadCats();
+  }
+  function loadCats(){
+    try { expenseCats = JSON.parse(localStorage.getItem(KEY_EXP_CATS) || 'null'); } catch(e){ expenseCats = null; }
+    if(!expenseCats || !expenseCats.length){ expenseCats = JSON.parse(JSON.stringify(DEFAULT_EXPENSE_CATS)); }
+    try { incomeCats = JSON.parse(localStorage.getItem(KEY_INC_CATS) || 'null'); } catch(e){ incomeCats = null; }
+    if(!incomeCats || !incomeCats.length){ incomeCats = JSON.parse(JSON.stringify(DEFAULT_INCOME_CATS)); }
+    saveCats();
+  }
+  function saveCats(){
+    localStorage.setItem(KEY_EXP_CATS, JSON.stringify(expenseCats));
+    localStorage.setItem(KEY_INC_CATS, JSON.stringify(incomeCats));
   }
   function save(){ localStorage.setItem(KEY_T, JSON.stringify(txns)); }
   function saveWallets(){ localStorage.setItem(KEY_W, JSON.stringify(wallets)); }
@@ -502,7 +551,7 @@
         + '</div>';
     }
     const [name, emoji] = catOf(t.type, t.category);
-    const bg = CAT_BG[emoji] || '#eef0f2';
+    const bg = catBg(emoji);
     const amtCls = t.type==='income' ? 'inc' : 'exp';
     const sign = t.type==='income' ? '+' : '-';
     const w = walletById(t.wallet);
@@ -625,7 +674,7 @@
   }
 
   function catOf(type, category){
-    const list = type==='income' ? INCOME_CATS : EXPENSE_CATS;
+    const list = type==='income' ? incomeCats : expenseCats;
     const found = list.find(c => c[0]===category);
     return found || [category, '📦'];
   }
@@ -665,6 +714,7 @@
     if(t==='settings'){
       document.getElementById('budgetInput').value = getBudget() > 0 ? getBudget() : '';
       document.getElementById('budgetHint').textContent = getBudget() > 0 ? ('当前预算 ¥'+fmtPlain(getBudget())) : '';
+      renderCatManager();
     }
   };
 
@@ -772,11 +822,11 @@
   }
 
   function renderCatGrid(){
-    const cats = currentType==='income' ? INCOME_CATS : EXPENSE_CATS;
+    const cats = currentType==='income' ? incomeCats : expenseCats;
     const grid = document.getElementById('catGrid');
     let html = '';
     cats.forEach(([name, emoji]) => {
-      const bg = CAT_BG[emoji] || '#eef0f2';
+      const bg = catBg(emoji);
       const on = currentCat === name ? ' on' : '';
       html += '<div class="cat-item'+on+'" data-cat="'+name+'"><div class="cic" style="background:'+bg+'">'+emoji+'</div><span>'+name+'</span></div>';
     });
@@ -1180,7 +1230,11 @@
       else if(s.includes('理财')||s.includes('利息')||s.includes('收益')) category='理财';
       else if(s.includes('报销')) category='报销';
       else if(s.includes('兼职')||s.includes('外快')) category='兼职';
-      else category='工资';
+      else {
+        let hit = null;
+        for(const [name] of incomeCats){ if(name !== '工资' && s.includes(name)){ hit = name; break; } }
+        category = hit || '工资';
+      }
     } else if(type === 'expense'){
       const catMap = [
         ['餐饮',['餐','饭','吃','午饭','晚饭','早餐','夜宵','外卖','咖啡','奶茶','喝','美团','饿了么','火锅','烧烤','零食','水果']],
@@ -1197,6 +1251,9 @@
         ['购物',['买','购物','淘宝','京东','拼多多','超市','衣服','鞋','包','化妆品']]
       ];
       for(const [cat, words] of catMap){ if(words.some(w=>s.includes(w))){ category=cat; break; } }
+      if(!category){
+        for(const [name] of expenseCats){ if(s.includes(name)){ category = name; break; } }
+      }
       if(!category) category='其他';
     }
 
@@ -1237,6 +1294,43 @@
     document.getElementById('quickInput').value = '';
   };
 
+  // ===== 分类管理 =====
+  function renderCatManager(){
+    document.getElementById('expCatList').innerHTML = expenseCats.map(c => '<span class="cm-chip" data-type="expense" data-name="'+escapeHtml(c[0])+'">'+c[1]+' '+escapeHtml(c[0])+' <span class="del">✕</span></span>').join('');
+    document.getElementById('incCatList').innerHTML = incomeCats.map(c => '<span class="cm-chip" data-type="income" data-name="'+escapeHtml(c[0])+'">'+c[1]+' '+escapeHtml(c[0])+' <span class="del">✕</span></span>').join('');
+    document.querySelectorAll('.cm-chip').forEach(chip => chip.addEventListener('click', function(e){
+      if(e.target.classList.contains('del')){ deleteCategory(this.dataset.type, this.dataset.name); }
+    }));
+    const eb = document.getElementById('catEmojiPick');
+    eb.innerHTML = CAT_EMOJIS.map(e => '<div class="eopt'+(pickedCatEmoji===e?' on':'')+'" data-e="'+e+'">'+e+'</div>').join('');
+    eb.querySelectorAll('.eopt').forEach(el => el.addEventListener('click', () => {
+      pickedCatEmoji = el.dataset.e;
+      eb.querySelectorAll('.eopt').forEach(x => x.classList.remove('on'));
+      el.classList.add('on');
+    }));
+  }
+
+  window.addCategory = function(){
+    const name = document.getElementById('newCatName').value.trim();
+    if(!name){ alert('请输入分类名称'); return; }
+    const list = newCatType === 'income' ? incomeCats : expenseCats;
+    if(list.some(c => c[0] === name)){ alert('这个分类已存在'); return; }
+    list.push([name, pickedCatEmoji]);
+    saveCats();
+    document.getElementById('newCatName').value = '';
+    renderCatManager();
+  };
+
+  function deleteCategory(type, name){
+    const used = txns.filter(t => t.type === type && t.category === name).length;
+    if(!confirm('删除分类「'+name+'」？' + (used ? ('\n有 '+used+' 笔记录用到它，删除后这些记录的图标会失效（数据保留）。') : ''))) return;
+    if(type === 'income') incomeCats = incomeCats.filter(c => c[0] !== name);
+    else expenseCats = expenseCats.filter(c => c[0] !== name);
+    saveCats();
+    renderCatManager();
+    if(currentTab === 'list') renderList(monthTxns(currentMonth));
+  };
+
   // 初始化
   load();
   currentMonth = nowMonth();
@@ -1249,6 +1343,11 @@
   document.getElementById('quickInput').addEventListener('keydown', function(e){
     if(e.key === 'Enter') submitQuick();
   });
+  document.querySelectorAll('.cm-tb').forEach(b => b.addEventListener('click', () => {
+    newCatType = b.dataset.t;
+    document.querySelectorAll('.cm-tb').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+  }));
 
   if('serviceWorker' in navigator){
     window.addEventListener('load', ()=> navigator.serviceWorker.register('sw.js').catch(()=>{}));
