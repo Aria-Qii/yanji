@@ -202,6 +202,7 @@
     .import-sample .row:last-child { border-bottom: none; }
     .import-sample .row span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .import-sample .row.head { color: var(--text-2); font-weight: 600; }
+    .import-check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); margin-top: 8px; cursor: pointer; }
 
     /* ===== 悬浮按钮 & 底部导航 ===== */
     .fab { position: fixed; right: 20px; bottom: calc(86px + var(--safe-bottom)); width: 58px; height: 58px; border-radius: 50%; background: var(--accent); color: #fff; border: none; font-size: 30px; line-height: 1; box-shadow: 0 6px 20px rgba(16,185,129,.42); cursor: pointer; z-index: 30; display: flex; align-items: center; justify-content: center; transition: transform .12s, background .12s; }
@@ -381,6 +382,7 @@
       <div class="chart-head"><h3>📥 导入账单</h3></div>
       <div class="hint-line">支持叨叨记账：粘贴数据，或「选择文件」导入 .tsv/.txt/.csv。</div>
       <textarea class="import-textarea" id="importText" placeholder="粘贴数据（第一行是表头）…"></textarea>
+      <label class="import-check"><input type="checkbox" id="importSkipPing" checked /> 跳过「平账/对账」条目（推荐）</label>
       <input type="file" id="importFile" accept=".tsv,.txt,.csv" style="display:none;" onchange="handleImportFile(this)" />
       <div class="sheet-actions" style="margin-top:10px;">
         <button class="btn ghost" onclick="document.getElementById('importFile').click()">📁 选择文件</button>
@@ -403,6 +405,11 @@
     <div class="chart-card">
       <div class="chart-head"><h3>ℹ️ 关于</h3></div>
       <div class="hint-line">砚记 · 本地记账<br/>数据仅存本机浏览器，不上传任何服务器</div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-head"><h3>🗑️ 数据管理</h3></div>
+      <button class="btn danger" onclick="clearTxns()">清空全部账单记录</button>
+      <div class="hint-line">仅清空账单记录，账户和分类保留。操作不可撤销。</div>
     </div>
   </section>
 
@@ -482,6 +489,7 @@
   const BG_PALETTE = ['#fff1e6','#e6f0ff','#ffe9f0','#eef7ee','#f0e6ff','#e6fbff','#fffbe6','#f3ecff','#eef2f6','#ffe9e6'];
   const DONUT_PALETTE = ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#14b8a6','#6366f1','#e11d48','#22c55e','#a855f7','#facc15','#0891b2'];
   const IMPORT_CAT_MAP = { '食':'餐饮','餐饮':'餐饮','饭':'餐饮','购':'购物','购物':'购物','买':'购物','行':'交通','交通':'交通','出行':'交通','住':'居住','居住':'居住','娱':'娱乐','乐':'娱乐','娱乐':'娱乐','医':'医疗','医疗':'医疗','学':'教育','育':'教育','教育':'教育','衣':'服饰','服饰':'服饰','人情':'人情','情':'人情','礼':'人情','旅':'旅行','旅行':'旅行','通讯':'通讯','通':'通讯','日用':'日用','宠物':'宠物','宠':'宠物','薪':'工资','工资':'工资','奖金':'奖金','红包':'红包','理财':'理财','投':'理财','报销':'报销','兼职':'兼职','其':'其他','其他':'其他' };
+  const IMPORT_INCOME_CAT = { '工资':'工资','红包':'红包','报销':'报销','兼职外快':'兼职','兼职':'兼职','投资收入':'理财','投资':'理财','理财':'理财','利息':'理财','奖金':'奖金' };
   let expenseCats = [];
   let incomeCats = [];
   const WALLET_EMOJIS = ['💬','🔷','💳','🚗','🏦','💰','🐷','📱','🧾','💵','🪙','🏧','✈️','🎁','✨'];
@@ -1487,7 +1495,7 @@
     return null;
   }
 
-  function parseImport(text){
+  function parseImport(text, skipPing){
     const lines = String(text||'').split(/\r?\n/).filter(l => l.trim());
     if(lines.length < 2) return { error: '至少需要表头 + 1 行数据' };
     const hasTab = lines[0].includes('\t');
@@ -1517,8 +1525,16 @@
       if(!amount || isNaN(amount)){ skipped++; continue; }
       const date = normDate(get(idx.date));
       if(!date){ skipped++; continue; }
-      const category = IMPORT_CAT_MAP[get(idx.cat1)] || '其他';
-      const note = get(idx.note) || get(idx.cat2);
+      const rawNote = get(idx.note);
+      const rawCat2 = get(idx.cat2);
+      if(skipPing && (rawNote + rawCat2).includes('平账')){ skipped++; continue; }
+      let category;
+      if(type === 'income'){
+        category = IMPORT_INCOME_CAT[rawCat2] || '其他';
+      } else {
+        category = IMPORT_CAT_MAP[get(idx.cat1)] || '其他';
+      }
+      const note = rawNote || rawCat2;
       const wallet = mapImportWallet(get(idx.account));
       rows.push({ type, amount, date, category, note, wallet });
     }
@@ -1527,7 +1543,7 @@
 
   window.previewImport = function(){
     const text = document.getElementById('importText').value;
-    const res = parseImport(text);
+    const res = parseImport(text, document.getElementById('importSkipPing').checked);
     const box = document.getElementById('importPreview');
     if(res.error){ alert(res.error); box.style.display = 'none'; return; }
     pendingImport = res.rows;
@@ -1577,6 +1593,15 @@
       previewImport();
     };
     reader.readAsText(f, 'UTF-8');
+  };
+
+  window.clearTxns = function(){
+    if(txns.length === 0){ alert('当前没有账单记录'); return; }
+    if(!confirm('确定清空全部 '+txns.length+' 笔账单记录吗？账户和分类会保留。此操作不可撤销！')) return;
+    txns = [];
+    save();
+    render();
+    alert('已清空账单记录');
   };
 
   // 初始化
