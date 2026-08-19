@@ -167,6 +167,10 @@
     .qset-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
     .qset-row label { font-size: 13px; color: var(--text-2); width: 86px; flex-shrink: 0; }
     .qset-row input { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 14px; outline: none; background: var(--bg); }
+    .qset-row select { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 14px; outline: none; background: var(--bg); }
+    .qset-title input { width: 140px; border: none; background: none; font-weight: 600; font-size: 14px; outline: none; }
+    .qset-btns { display: flex; gap: 8px; margin-top: 10px; }
+    .qset-btns .btn { flex: 1; padding: 10px 0; }
 
     /* ===== 搜索栏 ===== */
     .search-bar { margin: 12px 14px 0; position: relative; }
@@ -1702,24 +1706,59 @@
     toast('已记 '+q.name+' ¥'+q.amount);
   }
 
+  function walletSelect(id, selectedName){
+    let h = '<select id="'+id+'"><option value="">未指定</option>';
+    wallets.forEach(w => { h += '<option value="'+escapeHtml(w.name)+'"'+(w.name===selectedName?' selected':'')+'>'+w.emoji+' '+escapeHtml(w.name)+'</option>'; });
+    return h + '</select>';
+  }
+
   function renderQuickSettings(){
     const el = document.getElementById('quickSettings');
     let html = '';
     quickActions.forEach(q => {
-      html += '<div class="qset-item">'
-        + '<div class="qset-title">'+q.emoji+' '+q.name+'</div>'
+      html += '<div class="qset-item" data-id="'+q.id+'">'
+        + '<div class="qset-title">'+q.emoji+' <input id="qset_name_'+q.id+'" value="'+escapeHtml(q.name)+'" /></div>'
+        + '<div class="qset-row"><label>类型</label><select id="qset_type_'+q.id+'" onchange="quickTypeChange(\''+q.id+'\')"><option value="transfer"'+(q.type==='transfer'?' selected':'')+'>转账</option><option value="expense"'+(q.type==='expense'?' selected':'')+'>支出</option><option value="income"'+(q.type==='income'?' selected':'')+'>收入</option></select></div>'
+        + '<div class="qset-row qf-transfer"><label>转出账户</label>'+walletSelect('qset_from_'+q.id, q.from)+'</div>'
+        + '<div class="qset-row qf-transfer"><label>转入账户</label>'+walletSelect('qset_to_'+q.id, q.to)+'</div>'
+        + '<div class="qset-row qf-nontransfer"><label>账户</label>'+walletSelect('qset_wallet_'+q.id, q.from)+'</div>'
         + '<div class="qset-row"><label>金额</label><input id="qset_amount_'+q.id+'" inputmode="decimal" value="'+q.amount+'" /></div>'
-        + '<div class="qset-row"><label>分类</label><input id="qset_cat_'+q.id+'" value="'+escapeHtml(q.category)+'" placeholder="转账不用填" /></div>'
+        + '<div class="qset-row qf-nontransfer"><label>分类</label><input id="qset_cat_'+q.id+'" value="'+escapeHtml(q.category)+'" placeholder="如 居住" /></div>'
         + '<div class="qset-row"><label>固定日(几号)</label><input id="qset_day_'+q.id+'" inputmode="numeric" value="'+(q.day||'')+'" placeholder="如 10" /></div>'
-        + '<button class="btn primary" style="margin-top:6px;" onclick="saveQuickConfig(\''+q.id+'\')">保存</button>'
+        + '<div class="qset-btns"><button class="btn primary" onclick="saveQuickConfig(\''+q.id+'\')">保存</button><button class="btn danger" onclick="deleteQuickConfig(\''+q.id+'\')">删除</button></div>'
         + '</div>';
     });
+    if(quickActions.length < 3){
+      html += '<button class="btn ghost" style="width:100%;" onclick="addQuickConfig()">＋ 添加快捷按钮（最多 3 个）</button>';
+    }
     el.innerHTML = html;
+    quickActions.forEach(q => quickTypeVisibility(q.id, q.type));
   }
+
+  function quickTypeVisibility(id, type){
+    const item = document.querySelector('.qset-item[data-id="'+id+'"]');
+    if(!item) return;
+    const isTransfer = type === 'transfer';
+    item.querySelectorAll('.qf-transfer').forEach(x => x.style.display = isTransfer ? '' : 'none');
+    item.querySelectorAll('.qf-nontransfer').forEach(x => x.style.display = isTransfer ? 'none' : '');
+  }
+
+  window.quickTypeChange = function(id){
+    quickTypeVisibility(id, document.getElementById('qset_type_'+id).value);
+  };
 
   window.saveQuickConfig = function(id){
     const q = quickActions.find(x => x.id === id);
     if(!q) return;
+    q.name = document.getElementById('qset_name_'+id).value.trim() || q.name;
+    q.type = document.getElementById('qset_type_'+id).value;
+    if(q.type === 'transfer'){
+      q.from = document.getElementById('qset_from_'+id).value;
+      q.to = document.getElementById('qset_to_'+id).value;
+    } else {
+      q.from = document.getElementById('qset_wallet_'+id).value;
+      q.to = '';
+    }
     const amt = parseFloat(document.getElementById('qset_amount_'+id).value);
     if(!amt || isNaN(amt) || amt <= 0){ alert('金额请输入有效数字'); return; }
     q.amount = Math.round(amt*100)/100;
@@ -1728,7 +1767,24 @@
     q.day = (day >= 1 && day <= 31) ? day : 0;
     saveQuick();
     renderQuickButtons();
-    toast('已保存 '+q.name+' 设置');
+    toast('已保存 '+q.name);
+  };
+
+  window.deleteQuickConfig = function(id){
+    const q = quickActions.find(x => x.id === id);
+    if(!confirm('删除快捷按钮「'+(q?q.name:'')+'」？')) return;
+    quickActions = quickActions.filter(x => x.id !== id);
+    saveQuick();
+    renderQuickButtons();
+    renderQuickSettings();
+  };
+
+  window.addQuickConfig = function(){
+    if(quickActions.length >= 3){ alert('最多 3 个快捷按钮'); return; }
+    quickActions.push({ id:'q_'+Date.now().toString(36), name:'新按钮', emoji:'⚡', type:'expense', from:wallets[0]?wallets[0].name:'', to:'', amount:0, category:'', day:0, enabled:true });
+    saveQuick();
+    renderQuickButtons();
+    renderQuickSettings();
   };
 
   // 初始化
