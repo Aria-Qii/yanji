@@ -162,6 +162,11 @@
     .quick-actions { display: flex; gap: 8px; margin: 8px 14px 0; }
     .qa-btn { flex: 1; padding: 10px 6px; border: 1.5px solid var(--accent); border-radius: 12px; background: #fff; color: var(--accent-deep); font-size: 13px; font-weight: 600; cursor: pointer; }
     .qa-btn:active { background: rgba(16,185,129,.12); }
+    .qset-item { padding: 12px; border: 1px solid var(--line); border-radius: 12px; margin-bottom: 10px; }
+    .qset-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+    .qset-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .qset-row label { font-size: 13px; color: var(--text-2); width: 86px; flex-shrink: 0; }
+    .qset-row input { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 14px; outline: none; background: var(--bg); }
 
     /* ===== 搜索栏 ===== */
     .search-bar { margin: 12px 14px 0; position: relative; }
@@ -285,14 +290,11 @@
     </div>
   </header>
 
-  <div class="quick-bar">
+  <div class="quick-bar" id="quickBar">
     <input id="quickInput" placeholder="💬 一句话记账：午餐 35 微信" />
   </div>
 
-  <div class="quick-actions">
-    <button class="qa-btn" onclick="quickCarLoan()">🚗 车贷月供</button>
-    <button class="qa-btn" onclick="quickRent()">🏠 房租</button>
-  </div>
+  <div class="quick-actions" id="quickActions"></div>
 
   <div class="search-bar" id="searchBar">
     <input id="searchInput" placeholder="搜索账单（分类 / 备注 / 账户 / 金额）" />
@@ -411,6 +413,10 @@
       <div class="hint-line">CSV 可用 Excel / WPS 打开，含全部账单（支出为负数、收入为正数、转账无符号）</div>
     </div>
     <div class="chart-card">
+      <div class="chart-head"><h3>⚡ 快捷记账</h3></div>
+      <div id="quickSettings"></div>
+    </div>
+    <div class="chart-card">
       <div class="chart-head"><h3>ℹ️ 关于</h3></div>
       <div class="hint-line">砚记 · 本地记账<br/>数据仅存本机浏览器，不上传任何服务器</div>
     </div>
@@ -421,7 +427,7 @@
     </div>
   </section>
 
-  <button class="fab" onclick="openAdd()">+</button>
+  <button class="fab" id="fab" onclick="openAdd()">+</button>
 
   <nav class="tabbar">
     <button class="tab active" id="tabList" onclick="switchTab('list')"><span class="tic">📒</span>明细</button>
@@ -538,6 +544,12 @@
   let catStatType = 'expense';
   let catStatPeriod = 'month';
   let pendingImport = null;
+  const KEY_QUICK = 'yanji_quick_v1';
+  const DEFAULT_QUICK = [
+    { id:'carloan', name:'车贷月供', emoji:'🚗', type:'transfer', from:'工资卡', to:'车贷', amount:2082.67, category:'', day:10, enabled:true },
+    { id:'rent', name:'房租', emoji:'🏠', type:'expense', from:'工资卡', to:'', amount:1310.87, category:'居住', day:10, enabled:true }
+  ];
+  let quickActions = [];
   // 账户编辑状态
   let editingWalletId = null;
   let pickedEmoji = '💬';
@@ -548,7 +560,13 @@
     try { wallets = JSON.parse(localStorage.getItem(KEY_W) || 'null'); } catch(e){ wallets = null; }
     if(!wallets){ wallets = JSON.parse(JSON.stringify(DEFAULT_WALLETS)); saveWallets(); }
     loadCats();
+    loadQuick();
   }
+  function loadQuick(){
+    try { quickActions = JSON.parse(localStorage.getItem(KEY_QUICK) || 'null'); } catch(e){ quickActions = null; }
+    if(!quickActions || !quickActions.length){ quickActions = JSON.parse(JSON.stringify(DEFAULT_QUICK)); saveQuick(); }
+  }
+  function saveQuick(){ localStorage.setItem(KEY_QUICK, JSON.stringify(quickActions)); }
   function loadCats(){
     try { expenseCats = JSON.parse(localStorage.getItem(KEY_EXP_CATS) || 'null'); } catch(e){ expenseCats = null; }
     if(!expenseCats || !expenseCats.length){ expenseCats = JSON.parse(JSON.stringify(DEFAULT_EXPENSE_CATS)); }
@@ -787,12 +805,17 @@
     document.getElementById('walletView').style.display = t==='wallet' ? '' : 'none';
     document.getElementById('statsView').style.display = t==='stats' ? '' : 'none';
     document.getElementById('settingsView').style.display = t==='settings' ? '' : 'none';
+    document.getElementById('quickBar').style.display = t==='list' ? '' : 'none';
+    document.getElementById('quickActions').style.display = t==='list' ? '' : 'none';
+    document.getElementById('fab').style.display = t==='list' ? '' : 'none';
+    document.body.style.paddingBottom = t==='list' ? '' : 'calc(100px + var(--safe-bottom))';
     if(t==='wallet') renderWallets();
     if(t==='stats') renderStats();
     if(t==='settings'){
       document.getElementById('budgetInput').value = getBudget() > 0 ? getBudget() : '';
       document.getElementById('budgetHint').textContent = getBudget() > 0 ? ('当前预算 ¥'+fmtPlain(getBudget())) : '';
       renderCatManager();
+      renderQuickSettings();
     }
   };
 
@@ -1640,26 +1663,79 @@
     t._t = setTimeout(() => { t.style.opacity = '0'; }, 2200);
   }
 
-  window.quickCarLoan = function(){
-    const fromW = wallets.find(w => w.name === '工资卡'), toW = wallets.find(w => w.name === '车贷');
-    if(!fromW || !toW){ alert('请先建好「工资卡」和「车贷」账户'); return; }
-    txns.push({ id: Date.now().toString()+Math.random().toString(36).slice(2,6), type: 'transfer', amount: 2082.67, from: fromW.id, to: toW.id, note: '车贷月供', date: todayStr(), createdAt: Date.now() });
-    save(); render();
-    toast('已记车贷月供 ¥2082.67');
-  };
+  function uid(){ return Date.now().toString()+Math.random().toString(36).slice(2,6); }
 
-  window.quickRent = function(){
-    const w = wallets.find(w => w.name === '工资卡');
-    if(!w){ alert('请先建好「工资卡」账户'); return; }
-    txns.push({ id: Date.now().toString()+Math.random().toString(36).slice(2,6), type: 'expense', amount: 1310.87, category: '居住', wallet: w.id, note: '房租', date: todayStr(), createdAt: Date.now() });
+  function quickDate(day){
+    const d = parseInt(day);
+    if(!d || d < 1 || d > 31) return todayStr();
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth()+1;
+    const max = new Date(y, m, 0).getDate();
+    const dd = Math.min(d, max);
+    const target = new Date(y, m-1, dd); target.setHours(0,0,0,0);
+    const today = new Date(); today.setHours(0,0,0,0);
+    if(target > today) return todayStr();
+    return y+'-'+String(m).padStart(2,'0')+'-'+String(dd).padStart(2,'0');
+  }
+
+  function renderQuickButtons(){
+    const box = document.getElementById('quickActions');
+    box.innerHTML = quickActions.filter(q => q.enabled).map(q =>
+      '<button class="qa-btn" data-id="'+q.id+'">'+q.emoji+' '+q.name+'</button>'
+    ).join('');
+    box.querySelectorAll('.qa-btn').forEach(b => b.addEventListener('click', () => fireQuick(b.dataset.id)));
+  }
+
+  function fireQuick(id){
+    const q = quickActions.find(x => x.id === id);
+    if(!q) return;
+    if(q.type === 'transfer'){
+      const fromW = wallets.find(w => w.name === q.from), toW = wallets.find(w => w.name === q.to);
+      if(!fromW || !toW){ alert('请先建好「'+q.from+'」和「'+q.to+'」账户'); return; }
+      txns.push({ id: uid(), type:'transfer', amount:q.amount, from:fromW.id, to:toW.id, note:q.name, date: quickDate(q.day), createdAt: Date.now() });
+    } else {
+      const w = wallets.find(x => x.name === q.from);
+      if(!w){ alert('请先建好「'+q.from+'」账户'); return; }
+      txns.push({ id: uid(), type:q.type, amount:q.amount, category:q.category || '其他', wallet:w.id, note:q.name, date: quickDate(q.day), createdAt: Date.now() });
+    }
     save(); render();
-    toast('已记房租 ¥1310.87');
+    toast('已记 '+q.name+' ¥'+q.amount);
+  }
+
+  function renderQuickSettings(){
+    const el = document.getElementById('quickSettings');
+    let html = '';
+    quickActions.forEach(q => {
+      html += '<div class="qset-item">'
+        + '<div class="qset-title">'+q.emoji+' '+q.name+'</div>'
+        + '<div class="qset-row"><label>金额</label><input id="qset_amount_'+q.id+'" inputmode="decimal" value="'+q.amount+'" /></div>'
+        + '<div class="qset-row"><label>分类</label><input id="qset_cat_'+q.id+'" value="'+escapeHtml(q.category)+'" placeholder="转账不用填" /></div>'
+        + '<div class="qset-row"><label>固定日(几号)</label><input id="qset_day_'+q.id+'" inputmode="numeric" value="'+(q.day||'')+'" placeholder="如 10" /></div>'
+        + '<button class="btn primary" style="margin-top:6px;" onclick="saveQuickConfig(\''+q.id+'\')">保存</button>'
+        + '</div>';
+    });
+    el.innerHTML = html;
+  }
+
+  window.saveQuickConfig = function(id){
+    const q = quickActions.find(x => x.id === id);
+    if(!q) return;
+    const amt = parseFloat(document.getElementById('qset_amount_'+id).value);
+    if(!amt || isNaN(amt) || amt <= 0){ alert('金额请输入有效数字'); return; }
+    q.amount = Math.round(amt*100)/100;
+    q.category = document.getElementById('qset_cat_'+id).value.trim();
+    const day = parseInt(document.getElementById('qset_day_'+id).value);
+    q.day = (day >= 1 && day <= 31) ? day : 0;
+    saveQuick();
+    renderQuickButtons();
+    toast('已保存 '+q.name+' 设置');
   };
 
   // 初始化
   load();
   currentMonth = nowMonth();
   render();
+  renderQuickButtons();
   document.getElementById('searchInput').addEventListener('input', function(){
     searchQuery = this.value.trim();
     document.getElementById('searchClear').style.display = searchQuery ? 'inline-block' : 'none';
