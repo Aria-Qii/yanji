@@ -159,6 +159,9 @@
     .quick-bar { margin: 12px 14px 0; }
     .quick-bar input { width: 100%; border: 1.5px solid var(--accent); border-radius: 13px; padding: 12px 14px; font-size: 15px; background: #fff; outline: none; }
     .quick-bar input:focus { box-shadow: 0 0 0 3px rgba(16,185,129,.15); }
+    .quick-actions { display: flex; gap: 8px; margin: 8px 14px 0; }
+    .qa-btn { flex: 1; padding: 10px 6px; border: 1.5px solid var(--accent); border-radius: 12px; background: #fff; color: var(--accent-deep); font-size: 13px; font-weight: 600; cursor: pointer; }
+    .qa-btn:active { background: rgba(16,185,129,.12); }
 
     /* ===== 搜索栏 ===== */
     .search-bar { margin: 12px 14px 0; position: relative; }
@@ -284,6 +287,11 @@
 
   <div class="quick-bar">
     <input id="quickInput" placeholder="💬 一句话记账：午餐 35 微信" />
+  </div>
+
+  <div class="quick-actions">
+    <button class="qa-btn" onclick="quickCarLoan()">🚗 车贷月供</button>
+    <button class="qa-btn" onclick="quickRent()">🏠 房租</button>
   </div>
 
   <div class="search-bar" id="searchBar">
@@ -1615,6 +1623,37 @@
     save();
     render();
     alert('已清空账单记录');
+  };
+
+  // ===== 快捷记账 =====
+  function toast(msg){
+    let t = document.getElementById('toast');
+    if(!t){
+      t = document.createElement('div');
+      t.id = 'toast';
+      t.style.cssText = 'position:fixed;bottom:170px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.82);color:#fff;padding:10px 18px;border-radius:20px;font-size:14px;z-index:100;opacity:0;transition:opacity .25s;pointer-events:none;';
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._t);
+    t._t = setTimeout(() => { t.style.opacity = '0'; }, 2200);
+  }
+
+  window.quickCarLoan = function(){
+    const fromW = wallets.find(w => w.name === '工资卡'), toW = wallets.find(w => w.name === '车贷');
+    if(!fromW || !toW){ alert('请先建好「工资卡」和「车贷」账户'); return; }
+    txns.push({ id: Date.now().toString()+Math.random().toString(36).slice(2,6), type: 'transfer', amount: 2082.67, from: fromW.id, to: toW.id, note: '车贷月供', date: todayStr(), createdAt: Date.now() });
+    save(); render();
+    toast('已记车贷月供 ¥2082.67');
+  };
+
+  window.quickRent = function(){
+    const w = wallets.find(w => w.name === '工资卡');
+    if(!w){ alert('请先建好「工资卡」账户'); return; }
+    txns.push({ id: Date.now().toString()+Math.random().toString(36).slice(2,6), type: 'expense', amount: 1310.87, category: '居住', wallet: w.id, note: '房租', date: todayStr(), createdAt: Date.now() });
+    save(); render();
+    toast('已记房租 ¥1310.87');
   };
 
   // 初始化
