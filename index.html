@@ -28,14 +28,14 @@
       --safe-bottom: env(safe-area-inset-bottom, 0px);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-    html, body { height: 100%; }
+    html, body { min-height: 100%; }
     body {
       font-family: -apple-system, "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
       background: var(--bg);
       color: var(--text);
       overscroll-behavior-y: none;
       -webkit-font-smoothing: antialiased;
-      padding-bottom: calc(140px + var(--safe-bottom));
+      padding-bottom: calc(185px + var(--safe-bottom));
     }
 
     /* ===== 顶部 ===== */
@@ -460,6 +460,7 @@
     <div class="field"><label>账户名称</label><input id="walletNameInput" placeholder="如：微信、支付宝、信用卡…" /></div>
     <div class="field"><label>图标</label><div class="emoji-pick" id="emojiPick"></div></div>
     <div class="field"><label>初始余额（选填，负债填负数）</label><input id="walletInitInput" inputmode="decimal" placeholder="0.00" /></div>
+    <div class="field"><label>调整余额（选填，平账用）</label><input id="walletAdjustInput" inputmode="decimal" placeholder="填当前真实余额，自动调整" /></div>
     <div class="sheet-actions">
       <button class="btn danger" id="btnWalletDelete" style="display:none;" onclick="deleteWallet()">删除账户</button>
       <button class="btn ghost" onclick="closeAll()">取消</button>
@@ -953,6 +954,7 @@
     document.getElementById('walletNameInput').value = w ? w.name : '';
     pickedEmoji = w ? w.emoji : (WALLET_EMOJIS[0]);
     document.getElementById('walletInitInput').value = w ? (w.initial || 0) : '';
+    document.getElementById('walletAdjustInput').value = '';
     document.getElementById('btnWalletDelete').style.display = w ? 'block' : 'none';
     renderEmojiPick();
     showSheet('sheetWallet');
@@ -976,9 +978,20 @@
     const name = document.getElementById('walletNameInput').value.trim();
     if(!name){ alert('请输入账户名称'); return; }
     const init = parseFloat(document.getElementById('walletInitInput').value) || 0;
+    const adjustStr = document.getElementById('walletAdjustInput').value.trim();
     if(editingWalletId){
       const w = walletById(editingWalletId);
-      if(w){ w.name = name; w.emoji = pickedEmoji; w.initial = Math.round(init*100)/100; }
+      if(w){
+        w.name = name; w.emoji = pickedEmoji;
+        if(adjustStr !== ''){
+          const adjust = parseFloat(adjustStr);
+          if(isNaN(adjust)){ alert('调整余额请输入有效数字'); return; }
+          const netFlow = walletBalance(w) - (w.initial || 0);
+          w.initial = Math.round((adjust - netFlow)*100)/100;
+        } else {
+          w.initial = Math.round(init*100)/100;
+        }
+      }
     } else {
       wallets.push({ id: 'w_'+Date.now().toString(36), name: name, emoji: pickedEmoji, initial: Math.round(init*100)/100 });
     }
