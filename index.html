@@ -194,6 +194,15 @@
     .cat-rank-top .cname { display: flex; align-items: center; gap: 6px; }
     .cdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
 
+    /* ===== 导入账单 ===== */
+    .import-textarea { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 13px; outline: none; background: var(--bg); resize: vertical; min-height: 90px; font-family: inherit; line-height: 1.5; }
+    .import-textarea:focus { border-color: var(--accent); background: #fff; }
+    .import-sample { max-height: 200px; overflow-y: auto; background: var(--bg); border-radius: 10px; padding: 10px; font-size: 12px; margin-top: 8px; }
+    .import-sample .row { display: flex; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line); }
+    .import-sample .row:last-child { border-bottom: none; }
+    .import-sample .row span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .import-sample .row.head { color: var(--text-2); font-weight: 600; }
+
     /* ===== 悬浮按钮 & 底部导航 ===== */
     .fab { position: fixed; right: 20px; bottom: calc(86px + var(--safe-bottom)); width: 58px; height: 58px; border-radius: 50%; background: var(--accent); color: #fff; border: none; font-size: 30px; line-height: 1; box-shadow: 0 6px 20px rgba(16,185,129,.42); cursor: pointer; z-index: 30; display: flex; align-items: center; justify-content: center; transition: transform .12s, background .12s; }
     .fab:active { transform: scale(.92); background: var(--accent-deep); }
@@ -369,6 +378,20 @@
       </div>
     </div>
     <div class="chart-card">
+      <div class="chart-head"><h3>📥 导入账单</h3></div>
+      <div class="hint-line">支持叨叨记账：在 Excel/WPS 打开后，选中「表头 + 数据」复制，粘贴到下面（列之间是制表符）。</div>
+      <textarea class="import-textarea" id="importText" placeholder="粘贴数据（第一行是表头）…"></textarea>
+      <button class="btn primary" style="margin-top:10px;" onclick="previewImport()">解析预览</button>
+      <div id="importPreview" style="display:none;">
+        <div class="hint-line" id="importSummary"></div>
+        <div class="import-sample" id="importSample"></div>
+        <div class="sheet-actions" style="margin-top:12px;">
+          <button class="btn ghost" onclick="cancelImport()">取消</button>
+          <button class="btn primary" onclick="confirmImport()">确认导入</button>
+        </div>
+      </div>
+    </div>
+    <div class="chart-card">
       <div class="chart-head"><h3>📤 数据导出</h3></div>
       <button class="btn primary" onclick="exportCSV()">导出账单 CSV</button>
       <div class="hint-line">CSV 可用 Excel / WPS 打开，含全部账单（支出为负数、收入为正数、转账无符号）</div>
@@ -454,6 +477,7 @@
   const CAT_EMOJIS = ['🍜','🍔','🍰','☕','🍺','🛒','🛍️','👗','👟','💄','🚗','⛽','🚇','✈️','🏠','💡','💧','📱','💻','🎮','🎬','🏋️','⚽','💊','🏥','📚','🎓','🐱','🐶','💰','💳','🧧','🎁','🎉','💍','👶','🍼','🏦','📈','🧾','🔧','🧹','🌹','🎵','🎨','🧋','🍎','📦','✨','🌟','🔥','❤️'];
   const BG_PALETTE = ['#fff1e6','#e6f0ff','#ffe9f0','#eef7ee','#f0e6ff','#e6fbff','#fffbe6','#f3ecff','#eef2f6','#ffe9e6'];
   const DONUT_PALETTE = ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#14b8a6','#6366f1','#e11d48','#22c55e','#a855f7','#facc15','#0891b2'];
+  const IMPORT_CAT_MAP = { '食':'餐饮','餐饮':'餐饮','饭':'餐饮','购':'购物','购物':'购物','买':'购物','行':'交通','交通':'交通','出行':'交通','住':'居住','居住':'居住','娱':'娱乐','娱乐':'娱乐','医':'医疗','医疗':'医疗','学':'教育','教育':'教育','衣':'服饰','服饰':'服饰','人情':'人情','礼':'人情','旅':'旅行','旅行':'旅行','通讯':'通讯','通':'通讯','日用':'日用','宠物':'宠物','宠':'宠物','薪':'工资','工资':'工资','奖金':'奖金','红包':'红包','理财':'理财','报销':'报销','兼职':'兼职' };
   let expenseCats = [];
   let incomeCats = [];
   const WALLET_EMOJIS = ['💬','🔷','💳','🚗','🏦','💰','🐷','📱','🧾','💵','🪙','🏧','✈️','🎁','✨'];
@@ -492,6 +516,7 @@
   let pickedCatEmoji = '🍜';
   let catStatType = 'expense';
   let catStatPeriod = 'month';
+  let pendingImport = null;
   // 账户编辑状态
   let editingWalletId = null;
   let pickedEmoji = '💬';
@@ -1437,6 +1462,106 @@
     });
     el.innerHTML = html;
   }
+
+  // ===== 导入账单 =====
+  function normDate(d){
+    const m = String(d).match(/(\d{4})[-/.]?(\d{1,2})[-/.]?(\d{1,2})/);
+    if(!m) return null;
+    return m[1] + '-' + String(m[2]).padStart(2,'0') + '-' + String(m[3]).padStart(2,'0');
+  }
+
+  function mapImportWallet(name){
+    const n = String(name||'').trim().replace(/^'+/, '');
+    if(!n) return null;
+    const byName = nm => { const w = wallets.find(x => x.name === nm); return w ? w.id : null; };
+    if(/信用卡/.test(n)) return byName('信用卡');
+    if(/车贷/.test(n)) return byName('车贷');
+    if(/支付宝/.test(n)) return byName('支付宝');
+    if(/微信/.test(n)) return byName('微信');
+    if(/工资|储蓄|借记|招行|建行|工行|农行|中行|邮储|银行/.test(n)) return byName('工资卡');
+    return null;
+  }
+
+  function parseImport(text){
+    const lines = String(text||'').split(/\r?\n/).filter(l => l.trim());
+    if(lines.length < 2) return { error: '至少需要表头 + 1 行数据' };
+    const hasTab = lines[0].includes('\t');
+    const splitRow = hasTab ? (l => l.split('\t')) : (l => l.split(/\s{2,}/));
+    const header = splitRow(lines[0]).map(h => h.trim());
+    const idx = {
+      date: header.indexOf('记账日期'),
+      type: header.indexOf('记账类型'),
+      account: header.indexOf('使用账户'),
+      cat1: header.indexOf('一级分类'),
+      cat2: header.indexOf('二级分类'),
+      amount: header.indexOf('记账金额'),
+      note: header.indexOf('备注')
+    };
+    if(idx.date < 0 || idx.amount < 0) return { error: '没识别到「记账日期」或「记账金额」列，请确认第一行是表头' };
+    const rows = [];
+    let skipped = 0;
+    for(let i=1; i<lines.length; i++){
+      const cols = splitRow(lines[i]);
+      const get = j => (j >= 0 && j < cols.length) ? String(cols[j]).trim().replace(/^'+/, '') : '';
+      const typeStr = get(idx.type);
+      let type;
+      if(typeStr === '支出') type = 'expense';
+      else if(typeStr === '收入') type = 'income';
+      else { skipped++; continue; }
+      const amount = Math.abs(parseFloat(get(idx.amount)));
+      if(!amount || isNaN(amount)){ skipped++; continue; }
+      const date = normDate(get(idx.date));
+      if(!date){ skipped++; continue; }
+      const category = IMPORT_CAT_MAP[get(idx.cat1)] || '其他';
+      const note = get(idx.note) || get(idx.cat2);
+      const wallet = mapImportWallet(get(idx.account));
+      rows.push({ type, amount, date, category, note, wallet });
+    }
+    return { rows, skipped };
+  }
+
+  window.previewImport = function(){
+    const text = document.getElementById('importText').value;
+    const res = parseImport(text);
+    const box = document.getElementById('importPreview');
+    if(res.error){ alert(res.error); box.style.display = 'none'; return; }
+    pendingImport = res.rows;
+    const existing = new Set(txns.map(t => t.date+'|'+t.type+'|'+t.amount+'|'+(t.note||'')));
+    let dup = 0;
+    res.rows.forEach(r => { if(existing.has(r.date+'|'+r.type+'|'+r.amount+'|'+(r.note||''))) dup++; });
+    document.getElementById('importSummary').textContent = '共解析 '+res.rows.length+' 笔，跳过 '+res.skipped+' 笔无效行，其中 '+dup+' 笔已存在（去重），实际将新增 '+(res.rows.length-dup)+' 笔。';
+    let html = '<div class="row head"><span>日期</span><span>类型</span><span>分类</span><span>金额</span><span>账户</span><span>备注</span></div>';
+    res.rows.slice(0, 8).forEach(r => {
+      const w = walletById(r.wallet);
+      html += '<div class="row"><span>'+r.date+'</span><span>'+(r.type==='income'?'收入':'支出')+'</span><span>'+escapeHtml(r.category)+'</span><span>'+fmtPlain(r.amount)+'</span><span>'+escapeHtml(w?w.name:'未指定')+'</span><span>'+escapeHtml(r.note)+'</span></div>';
+    });
+    document.getElementById('importSample').innerHTML = html;
+    box.style.display = '';
+  };
+
+  window.confirmImport = function(){
+    if(!pendingImport || !pendingImport.length){ alert('没有可导入的数据'); return; }
+    const existing = new Set(txns.map(t => t.date+'|'+t.type+'|'+t.amount+'|'+(t.note||'')));
+    let added = 0;
+    pendingImport.forEach(r => {
+      const sig = r.date+'|'+r.type+'|'+r.amount+'|'+(r.note||'');
+      if(existing.has(sig)) return;
+      existing.add(sig);
+      txns.push({ id: Date.now().toString()+Math.random().toString(36).slice(2,6), type: r.type, amount: r.amount, category: r.category, note: r.note, date: r.date, wallet: r.wallet, createdAt: Date.now() });
+      added++;
+    });
+    save();
+    pendingImport = null;
+    document.getElementById('importText').value = '';
+    document.getElementById('importPreview').style.display = 'none';
+    render();
+    alert('导入完成：新增 '+added+' 笔');
+  };
+
+  window.cancelImport = function(){
+    pendingImport = null;
+    document.getElementById('importPreview').style.display = 'none';
+  };
 
   // 初始化
   load();
