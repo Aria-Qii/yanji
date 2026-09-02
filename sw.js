@@ -1,4 +1,4 @@
-const CACHE = 'yanji-v16';
+const CACHE = 'yanji-v17';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
