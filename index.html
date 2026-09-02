@@ -77,6 +77,7 @@
     .bar-top .cval { color: var(--text-2); font-variant-numeric: tabular-nums; }
     .bar-track { height: 7px; background: var(--bg); border-radius: 10px; overflow: hidden; }
     .bar-fill { height: 100%; background: linear-gradient(90deg, #34d399, #10b981); border-radius: 10px; transition: width .3s; }
+    .bar-fill.exp { background: linear-gradient(90deg, #f87171, #ef4444); }
 
     /* ===== 明细列表 ===== */
     .list { margin: 14px 14px 0; }
@@ -308,9 +309,17 @@
   <section class="breakdown" id="breakdownBox" style="display:none;">
     <div class="breakdown-head">
       <h3>📊 支出分类</h3>
-      <button class="breakdown-toggle" onclick="toggleBreakdown()">收起</button>
+      <button class="breakdown-toggle" onclick="toggleBreakdown('expense')">收起</button>
     </div>
     <div id="breakdownBody"></div>
+  </section>
+
+  <section class="breakdown" id="incomeBox" style="display:none;">
+    <div class="breakdown-head">
+      <h3>💰 收入分类</h3>
+      <button class="breakdown-toggle" onclick="toggleBreakdown('income')">收起</button>
+    </div>
+    <div id="incomeBody"></div>
   </section>
 
   <main class="list" id="list"></main>
@@ -391,6 +400,19 @@
         <div class="emoji-pick" id="catEmojiPick"></div>
         <button class="btn primary" style="margin-top:10px;" onclick="addCategory()">＋ 添加分类</button>
       </div>
+      <div class="cm-group" style="margin-top:16px;">
+        <div class="cm-title">小类（细分）管理</div>
+        <div class="cm-type" id="cmSubType">
+          <button class="cm-tb on" data-t="expense" onclick="setSubEditType('expense')">支出</button>
+          <button class="cm-tb" data-t="income" onclick="setSubEditType('income')">收入</button>
+        </div>
+        <select id="subMainSelect" onchange="subMainSelectChange(this.value)" style="width:100%;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:14px;outline:none;background:var(--bg);margin-bottom:8px;"></select>
+        <div class="cm-list" id="subCatList"></div>
+        <div class="cm-add">
+          <input id="newSubName" placeholder="新增小类，如：地铁" />
+          <button class="btn primary" style="margin-top:10px;" onclick="addSubCat()">＋ 添加小类</button>
+        </div>
+      </div>
     </div>
     <div class="chart-card">
       <div class="chart-head"><h3>📥 导入账单</h3></div>
@@ -414,7 +436,7 @@
     <div class="chart-card">
       <div class="chart-head"><h3>📤 数据导出</h3></div>
       <button class="btn primary" onclick="exportCSV()">导出账单 CSV</button>
-      <div class="hint-line">CSV 可用 Excel / WPS 打开，含全部账单（支出为负数、收入为正数、转账无符号）</div>
+      <div class="hint-line">CSV 可用 Excel / WPS 打开，含全部账单（支出为负数、收入为正数、转账无符号，含分类与小类）</div>
     </div>
     <div class="chart-card">
       <div class="chart-head"><h3>⚡ 快捷记账</h3></div>
@@ -462,6 +484,10 @@
       <div class="wallet-chips" id="toChips"></div>
     </div>
     <div class="cat-grid" id="catGrid"></div>
+    <div class="wallet-pick" id="subPick" style="display:none;">
+      <div class="plabel">细分（选填）</div>
+      <div class="wallet-chips" id="subChips"></div>
+    </div>
     <div class="field"><label>备注（选填）</label><input id="noteInput" placeholder="写点什么…" /></div>
     <div class="field"><label>日期</label><input id="dateInput" type="date" /></div>
     <div class="sheet-actions">
@@ -502,8 +528,32 @@
     ['工资','💰'],['奖金','🎁'],['理财','📈'],['兼职','💼'],['报销','🧾'],
     ['红包','🧧'],['其他','✨']
   ];
+  const DEFAULT_SUB_EXP = {
+    '餐饮':['早餐','午餐','晚餐','外卖','零食','奶茶咖啡','聚餐'],
+    '交通':['地铁','高铁','公交','打车','停车费','路桥费','加油','保养'],
+    '购物':['日用品','数码','家电','图书','化妆品'],
+    '居住':['房租','水电燃气','物业费','宽带','维修'],
+    '娱乐':['电影','游戏','演出','运动健身','KTV'],
+    '医疗':['药品','门诊','体检','挂号'],
+    '通讯':['话费','流量'],
+    '教育':['学费','书本','培训','考试'],
+    '宠物':['猫粮','猫砂','零食','疫苗','美容','看病'],
+    '服饰':['上衣','裤装','鞋靴','配饰'],
+    '人情':['红包','礼物','请客','份子钱'],
+    '旅行':['机票','高铁','酒店','门票'],
+    '日用':['清洁','纸品','收纳']
+  };
+  const DEFAULT_SUB_INC = {
+    '工资':['底薪','绩效','加班费','补贴'],
+    '奖金':['年终奖','季度奖','项目奖'],
+    '理财':['利息','基金','股票','分红'],
+    '兼职':['外快','稿费','咨询'],
+    '报销':['差旅','餐费','交通']
+  };
   const KEY_EXP_CATS = 'yanji_cats_expense_v1';
   const KEY_INC_CATS = 'yanji_cats_income_v1';
+  const KEY_SUB_EXP = 'yanji_subcats_expense_v1';
+  const KEY_SUB_INC = 'yanji_subcats_income_v1';
   const CAT_EMOJIS = ['🍜','🍔','🍰','☕','🍺','🛒','🛍️','👗','👟','💄','🚗','⛽','🚇','✈️','🏠','💡','💧','📱','💻','🎮','🎬','🏋️','⚽','💊','🏥','📚','🎓','🐱','🐶','💰','💳','🧧','🎁','🎉','💍','👶','🍼','🏦','📈','🧾','🔧','🧹','🌹','🎵','🎨','🧋','🍎','📦','✨','🌟','🔥','❤️'];
   const BG_PALETTE = ['#fff1e6','#e6f0ff','#ffe9f0','#eef7ee','#f0e6ff','#e6fbff','#fffbe6','#f3ecff','#eef2f6','#ffe9e6'];
   const DONUT_PALETTE = ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16','#f97316','#14b8a6','#6366f1','#e11d48','#22c55e','#a855f7','#facc15','#0891b2'];
@@ -511,6 +561,8 @@
   const IMPORT_INCOME_CAT = { '工资':'工资','红包':'红包','报销':'报销','兼职外快':'兼职','兼职':'兼职','投资收入':'理财','投资':'理财','理财':'理财','利息':'理财','奖金':'奖金' };
   let expenseCats = [];
   let incomeCats = [];
+  let subCatsExp = {};
+  let subCatsInc = {};
   const WALLET_EMOJIS = ['💬','🔷','💳','🚗','🏦','💰','🐷','📱','🧾','💵','🪙','🏧','✈️','🎁','✨'];
   const CAT_BG = {
     '🍜':'#fff1e6','🚗':'#e6f0ff','🛍️':'#ffe9f0','🏠':'#eef7ee','🎮':'#f0e6ff',
@@ -539,12 +591,16 @@
   let editingId = null;
   let currentType = 'expense';
   let currentCat = null;
+  let currentSub = null;
   let currentWallet = null;
   let currentFromWallet = null;
   let currentToWallet = null;
-  let showBreakdown = true;
+  let showExp = true;
+  let showInc = true;
   let newCatType = 'expense';
   let pickedCatEmoji = '🍜';
+  let subEditType = 'expense';
+  let subEditMain = '';
   let catStatType = 'expense';
   let catStatPeriod = 'month';
   let pendingImport = null;
@@ -576,11 +632,21 @@
     if(!expenseCats || !expenseCats.length){ expenseCats = JSON.parse(JSON.stringify(DEFAULT_EXPENSE_CATS)); }
     try { incomeCats = JSON.parse(localStorage.getItem(KEY_INC_CATS) || 'null'); } catch(e){ incomeCats = null; }
     if(!incomeCats || !incomeCats.length){ incomeCats = JSON.parse(JSON.stringify(DEFAULT_INCOME_CATS)); }
+    try { subCatsExp = JSON.parse(localStorage.getItem(KEY_SUB_EXP) || 'null'); } catch(e){ subCatsExp = null; }
+    if(!subCatsExp || typeof subCatsExp !== 'object'){ subCatsExp = JSON.parse(JSON.stringify(DEFAULT_SUB_EXP)); }
+    try { subCatsInc = JSON.parse(localStorage.getItem(KEY_SUB_INC) || 'null'); } catch(e){ subCatsInc = null; }
+    if(!subCatsInc || typeof subCatsInc !== 'object'){ subCatsInc = JSON.parse(JSON.stringify(DEFAULT_SUB_INC)); }
     saveCats();
   }
   function saveCats(){
     localStorage.setItem(KEY_EXP_CATS, JSON.stringify(expenseCats));
     localStorage.setItem(KEY_INC_CATS, JSON.stringify(incomeCats));
+    localStorage.setItem(KEY_SUB_EXP, JSON.stringify(subCatsExp));
+    localStorage.setItem(KEY_SUB_INC, JSON.stringify(subCatsInc));
+  }
+  function subsOf(type, main){
+    const map = type==='income' ? subCatsInc : subCatsExp;
+    return (map && map[main]) || [];
   }
   function save(){ localStorage.setItem(KEY_T, JSON.stringify(txns)); }
   function saveWallets(){ localStorage.setItem(KEY_W, JSON.stringify(wallets)); }
@@ -618,7 +684,7 @@
   function render(){
     const mt = monthTxns(currentMonth);
     let exp=0, inc=0;
-    mt.forEach(t => { if(t.type==='expense') exp+=t.amount; else inc+=t.amount; });
+    mt.forEach(t => { if(t.type==='expense') exp+=t.amount; else if(t.type==='income') inc+=t.amount; });
     const bal = inc - exp;
     document.getElementById('monthLabel').textContent = monthLabelText(currentMonth);
     document.getElementById('sumExpense').textContent = fmtMoneyS(exp);
@@ -630,6 +696,7 @@
     if(searchQuery){
       renderSearch();
       document.getElementById('breakdownBox').style.display = 'none';
+      document.getElementById('incomeBox').style.display = 'none';
     } else {
       renderList(mt);
       renderBreakdown(mt);
@@ -666,7 +733,7 @@
     const sub = subParts.length ? '<div class="sub">'+escapeHtml(subParts.join(' · '))+'</div>' : '';
     return '<div class="titem" data-id="'+t.id+'">'
       + '<div class="ico" style="background:'+bg+'">'+emoji+'</div>'
-      + '<div class="info"><div class="name">'+name+'</div>'+sub+'</div>'
+      + '<div class="info"><div class="name">'+name+(t.sub?' · '+escapeHtml(t.sub):'')+'</div>'+sub+'</div>'
       + '<div class="amt '+amtCls+'">'+sign+fmtPlain(t.amount)+'</div>'
       + '</div>';
   }
@@ -702,7 +769,7 @@
     const filtered = txns.filter(t => {
       const catName = (t.type !== 'transfer') ? catOf(t.type, t.category)[0] : '';
       const w = walletById(t.wallet), fw = walletById(t.from), tw = walletById(t.to);
-      const hay = [t.note||'', catName, t.category||'', w?w.name:'', fw?fw.name:'', tw?tw.name:'', t.date, String(t.amount)].join(' ').toLowerCase();
+      const hay = [t.note||'', catName, t.category||'', t.sub||'', w?w.name:'', fw?fw.name:'', tw?tw.name:'', t.date, String(t.amount)].join(' ').toLowerCase();
       return hay.includes(q);
     }).sort((a,b)=> b.date.localeCompare(a.date) || b.createdAt - a.createdAt);
     const list = document.getElementById('list');
@@ -715,21 +782,27 @@
   }
 
   function renderBreakdown(mt){
-    const box = document.getElementById('breakdownBox');
-    const body = document.getElementById('breakdownBody');
-    const expItems = mt.filter(t => t.type==='expense');
-    if(expItems.length === 0){ box.style.display = 'none'; return; }
-    box.style.display = showBreakdown ? 'block' : 'none';
+    renderBreakdownGroup(mt, 'expense', document.getElementById('breakdownBox'), document.getElementById('breakdownBody'), showExp);
+    renderBreakdownGroup(mt, 'income', document.getElementById('incomeBox'), document.getElementById('incomeBody'), showInc);
+  }
+  function renderBreakdownGroup(mt, type, box, body, visible){
+    const items = mt.filter(t => t.type===type);
+    if(items.length === 0){ box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    body.style.display = visible ? '' : 'none';
+    const btn = box.querySelector('.breakdown-toggle');
+    if(btn) btn.textContent = visible ? '收起' : '展开';
     const byCat = {};
-    expItems.forEach(t => { byCat[t.category] = (byCat[t.category]||0) + t.amount; });
+    items.forEach(t => { byCat[t.category] = (byCat[t.category]||0) + t.amount; });
     const total = Object.values(byCat).reduce((a,b)=>a+b,0);
     const arr = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+    const fillCls = type==='expense' ? 'bar-fill exp' : 'bar-fill';
     let html = '';
     arr.forEach(([cat, v]) => {
-      const [name, emoji] = catOf('expense', cat);
+      const [name, emoji] = catOf(type, cat);
       const pct = total>0 ? (v/total*100) : 0;
       html += '<div class="bar-item"><div class="bar-top"><span class="cname">'+emoji+' '+name+'</span><span class="cval">'+fmtPlain(v)+' · '+pct.toFixed(1)+'%</span></div>'
-        + '<div class="bar-track"><div class="bar-fill" style="width:'+Math.max(pct,2)+'%"></div></div></div>';
+        + '<div class="bar-track"><div class="'+fillCls+'" style="width:'+Math.max(pct,2)+'%"></div></div></div>';
     });
     body.innerHTML = html;
   }
@@ -809,7 +882,12 @@
     document.getElementById('tabSettings').className = 'tab' + (t==='settings'?' active':'');
     document.getElementById('list').style.display = t==='list' ? '' : 'none';
     document.getElementById('searchBar').style.display = t==='list' ? '' : 'none';
-    document.getElementById('breakdownBox').style.display = (t==='list' && !searchQuery && showBreakdown && monthTxns(currentMonth).some(x=>x.type==='expense')) ? 'block' : 'none';
+    if(t==='list' && !searchQuery){
+      renderBreakdown(monthTxns(currentMonth));
+    } else {
+      document.getElementById('breakdownBox').style.display = 'none';
+      document.getElementById('incomeBox').style.display = 'none';
+    }
     document.getElementById('walletView').style.display = t==='wallet' ? '' : 'none';
     document.getElementById('statsView').style.display = t==='stats' ? '' : 'none';
     document.getElementById('settingsView').style.display = t==='settings' ? '' : 'none';
@@ -832,6 +910,7 @@
     editingId = null;
     currentType = 'expense';
     currentCat = null;
+    currentSub = null;
     const last = localStorage.getItem(KEY_LAST);
     currentWallet = (last && walletById(last)) ? last : (wallets[0] ? wallets[0].id : null);
     currentFromWallet = wallets[0] ? wallets[0].id : null;
@@ -853,6 +932,7 @@
     editingId = id;
     currentType = t.type;
     currentCat = t.category;
+    currentSub = t.sub || null;
     currentWallet = t.wallet || null;
     currentFromWallet = t.from || (wallets[0] ? wallets[0].id : null);
     currentToWallet = t.to || (wallets[1] ? wallets[1].id : (wallets[0] ? wallets[0].id : null));
@@ -870,8 +950,10 @@
   window.setType = function(t){
     currentType = t;
     currentCat = null;
+    currentSub = null;
     updateTypeUI();
-    if(t !== 'transfer') renderCatGrid();
+    if(t !== 'transfer'){ renderCatGrid(); }
+    else { document.getElementById('subPick').style.display = 'none'; document.getElementById('subChips').innerHTML = ''; }
   };
 
   function updateTypeUI(){
@@ -942,7 +1024,25 @@
     grid.innerHTML = html;
     grid.querySelectorAll('.cat-item').forEach(el => el.addEventListener('click', () => {
       currentCat = el.dataset.cat;
+      currentSub = null;
       grid.querySelectorAll('.cat-item').forEach(e => e.classList.remove('on'));
+      el.classList.add('on');
+      renderSubPick();
+    }));
+    renderSubPick();
+  }
+  function renderSubPick(){
+    const box = document.getElementById('subPick');
+    const chips = document.getElementById('subChips');
+    const subs = currentCat ? subsOf(currentType, currentCat) : [];
+    if(currentType === 'transfer' || subs.length === 0){ box.style.display = 'none'; chips.innerHTML = ''; return; }
+    box.style.display = '';
+    let html = '<div class="wchip'+(currentSub===null?' on':'')+'" data-sub="">不细分</div>';
+    subs.forEach(s => { html += '<div class="wchip'+(currentSub===s?' on':'')+'" data-sub="'+escapeHtml(s)+'">'+escapeHtml(s)+'</div>'; });
+    chips.innerHTML = html;
+    chips.querySelectorAll('.wchip').forEach(el => el.addEventListener('click', () => {
+      currentSub = el.dataset.sub === '' ? null : el.dataset.sub;
+      chips.querySelectorAll('.wchip').forEach(e => e.classList.remove('on'));
       el.classList.add('on');
     }));
   }
@@ -966,9 +1066,9 @@
       if(!currentWallet){ alert('请选择一个账户'); return; }
       if(editingId){
         const t = txns.find(x => x.id === editingId);
-        if(t){ t.amount = amount; t.note = note; t.date = date; t.type = currentType; t.category = currentCat || '其他'; t.wallet = currentWallet; }
+        if(t){ t.amount = amount; t.note = note; t.date = date; t.type = currentType; t.category = currentCat || '其他'; t.sub = currentSub || ''; t.wallet = currentWallet; }
       } else {
-        txns.push({ id: Date.now().toString()+Math.random().toString(36).slice(2,6), type: currentType, amount: amount, category: currentCat || '其他', note: note, date: date, wallet: currentWallet, createdAt: Date.now() });
+        txns.push({ id: Date.now().toString()+Math.random().toString(36).slice(2,6), type: currentType, amount: amount, category: currentCat || '其他', sub: currentSub || '', note: note, date: date, wallet: currentWallet, createdAt: Date.now() });
       }
       localStorage.setItem(KEY_LAST, currentWallet);
     }
@@ -1064,9 +1164,9 @@
     document.getElementById('sheetWallet').classList.remove('show');
   };
 
-  window.toggleBreakdown = function(){
-    showBreakdown = !showBreakdown;
-    document.querySelector('.breakdown-toggle').textContent = showBreakdown ? '收起' : '展开';
+  window.toggleBreakdown = function(type){
+    if(type === 'income') showInc = !showInc;
+    else showExp = !showExp;
     renderBreakdown(monthTxns(currentMonth));
   };
 
@@ -1083,7 +1183,7 @@
   function monthStats(m){
     const mt = monthTxns(m);
     let exp=0, inc=0;
-    mt.forEach(t => { if(t.type==='expense') exp+=t.amount; else inc+=t.amount; });
+    mt.forEach(t => { if(t.type==='expense') exp+=t.amount; else if(t.type==='income') inc+=t.amount; });
     return { exp, inc, bal: inc-exp };
   }
   function monthShort(m){ return Number(m.split('-')[1]) + '月'; }
@@ -1286,10 +1386,10 @@
 
   window.exportCSV = function(){
     if(txns.length === 0){ alert('还没有账单可导出'); return; }
-    const head = ['日期','类型','金额','分类','账户','备注'];
+    const head = ['日期','类型','金额','分类','小类','账户','备注'];
     const rows = txns.slice().sort((a,b)=> a.date.localeCompare(b.date) || b.createdAt - a.createdAt).map(t => {
       const typeName = t.type==='income' ? '收入' : (t.type==='expense' ? '支出' : '转账');
-      let acct, cat = '';
+      let acct, cat = '', sub = '';
       if(t.type === 'transfer'){
         const fw = walletById(t.from), tw = walletById(t.to);
         acct = (fw?fw.name:'未指定') + ' → ' + (tw?tw.name:'未指定');
@@ -1297,9 +1397,10 @@
         const w = walletById(t.wallet);
         acct = w ? w.name : '未指定';
         cat = t.category || '';
+        sub = t.sub || '';
       }
       const amt = t.type === 'expense' ? -t.amount : t.amount;
-      return [t.date, typeName, amt, cat, acct, t.note || ''];
+      return [t.date, typeName, amt, cat, sub, acct, t.note || ''];
     });
     const csv = [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
     const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
@@ -1401,6 +1502,7 @@
     editingId = null;
     currentType = p.type;
     currentCat = p.category;
+    currentSub = null;
     currentWallet = p.wallet || (wallets[0] ? wallets[0].id : null);
     currentFromWallet = p.from || (wallets[0] ? wallets[0].id : null);
     currentToWallet = p.to || (wallets[1] ? wallets[1].id : (wallets[0] ? wallets[0].id : null));
@@ -1430,6 +1532,7 @@
       eb.querySelectorAll('.eopt').forEach(x => x.classList.remove('on'));
       el.classList.add('on');
     }));
+    renderSubManager();
   }
 
   window.addCategory = function(){
@@ -1451,6 +1554,45 @@
     saveCats();
     renderCatManager();
     if(currentTab === 'list') renderList(monthTxns(currentMonth));
+  };
+
+  // ===== 小类管理 =====
+  window.setSubEditType = function(t){
+    subEditType = t;
+    document.querySelectorAll('#cmSubType .cm-tb').forEach(x => x.classList.toggle('on', x.dataset.t === t));
+    renderSubManager();
+  };
+  window.subMainSelectChange = function(v){ subEditMain = v; renderSubList(); };
+  function renderSubManager(){
+    const mainList = subEditType==='income' ? incomeCats : expenseCats;
+    if(!mainList.some(c => c[0]===subEditMain)) subEditMain = mainList[0] ? mainList[0][0] : '';
+    const sel = document.getElementById('subMainSelect');
+    sel.innerHTML = mainList.map(c => '<option value="'+escapeHtml(c[0])+'"'+(c[0]===subEditMain?' selected':'')+'>'+c[1]+' '+escapeHtml(c[0])+'</option>').join('');
+    renderSubList();
+  }
+  function renderSubList(){
+    const subs = subsOf(subEditType, subEditMain);
+    const el = document.getElementById('subCatList');
+    if(subs.length === 0){ el.innerHTML = '<span style="font-size:12px;color:var(--text-2);">暂无小类</span>'; }
+    else { el.innerHTML = subs.map(s => '<span class="cm-chip">'+escapeHtml(s)+' <span class="del" data-sub="'+escapeHtml(s)+'">✕</span></span>').join(''); }
+    el.querySelectorAll('.del').forEach(d => d.addEventListener('click', () => deleteSubCat(d.dataset.sub)));
+  }
+  window.addSubCat = function(){
+    const name = document.getElementById('newSubName').value.trim();
+    if(!name){ alert('请输入小类名称'); return; }
+    const map = subEditType==='income' ? subCatsInc : subCatsExp;
+    if(!map[subEditMain]) map[subEditMain] = [];
+    if(map[subEditMain].includes(name)){ alert('这个小类已存在'); return; }
+    map[subEditMain].push(name);
+    saveCats();
+    document.getElementById('newSubName').value = '';
+    renderSubList();
+  };
+  function deleteSubCat(name){
+    const map = subEditType==='income' ? subCatsInc : subCatsExp;
+    map[subEditMain] = (map[subEditMain]||[]).filter(s => s !== name);
+    saveCats();
+    renderSubList();
   };
 
   // ===== 分类统计 =====
